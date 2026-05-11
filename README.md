@@ -8,6 +8,9 @@ blockparser
 
             znort987@yahoo.com
 
+        Porter (Win11):
+            ExodusRed
+
         Tip here if you find it useful:
 
             1ZnortsoStC1zSTXbW6CUtkvqew8czMMG
@@ -126,6 +129,13 @@ blockparser
 
             sudo apt-get install libssl-dev build-essential g++ libboost-all-dev libsparsehash-dev git-core perl
 
+
+            *
+            pacman -S openssl
+            pacman -S mingw-w64-x86_64-sparsehash
+            pacman -S mingw-w64-x86_64-boost
+
+
         Get the source:
 
             git clone git://github.com/znort987/blockparser.git
@@ -133,7 +143,7 @@ blockparser
         Build it:
 
             cd blockparser
-            make
+            ./make
 
     It crashes
     ----------
