@@ -9,12 +9,17 @@
 
 #include <util.h>
 #include <timer.h>
-#include <alloca.h>
+// #include <alloca.h>
+// #include "portable_alloca.h"
+#include <malloc.h>
 #include <common.h>
 #include <errlog.h>
 #include <rmd160.h>
 #include <sha256.h>
 #include <opcodes.h>
+
+#include <cstdio>
+#include <cstdlib>
 
 const uint8_t hexDigits[] = "0123456789abcdef";
 const uint8_t b58Digits[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -30,6 +35,16 @@ template<> uint8_t *PagedAllocator<uint160_t>::poolEnd = 0;
 
 template<> uint8_t *PagedAllocator<Chunk>::pool = 0;
 template<> uint8_t *PagedAllocator<Chunk>::poolEnd = 0;
+
+
+// #include <cstdio>
+// #include <cstdlib>
+
+[[noreturn]]
+static const char* fatal(const char *msg) {
+    fprintf(stderr, "fatal: %s\n", msg);
+    exit(1);
+}
 
 void toHex(
           uint8_t *dst,     // 2*size +1
@@ -603,7 +618,6 @@ bool addrToHash160(
     static BN_CTX *ctx = 0;
     if(unlikely(!ctx)) {
         ctx = BN_CTX_new();
-        BN_CTX_init(ctx);
         sum = BN_new();
     }
 
@@ -726,7 +740,6 @@ void hash160ToAddr(
 
     if(!ctx) {
         ctx = BN_CTX_new();
-        BN_CTX_init(ctx);
 
         b58 = BN_new();
         num = BN_new();

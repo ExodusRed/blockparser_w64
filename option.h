@@ -68,6 +68,8 @@
 #include <iostream>
 #include <sstream>
 
+#include <cstdint>
+
 namespace optparse {
 
 class OptionParser;

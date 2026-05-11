@@ -189,7 +189,7 @@ my(@lib) = qw(
     callback.cpp
 
     -lcrypto
-    -ldl
+
 );
 
 # Clean stuff we don't need for bitcoin
@@ -246,7 +246,6 @@ my(@copt) = qw(
     -fomit-frame-pointer
     -Wno-unused-parameter
     -finline-limit=1000000
-    -Wno-unused-private-field
     -Wno-unused-local-typedefs
 );
 

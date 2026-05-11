@@ -14,6 +14,35 @@
 static std::vector<Test*> *tests;
 static std::vector<std::string> msgs;
 
+
+
+#ifdef _WIN32
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstdarg>
+
+static int vasprintf(char **strp, const char *fmt, va_list ap) {
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+
+    int size = vsnprintf(nullptr, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (size < 0)
+        return -1;
+
+    *strp = (char*)malloc(size + 1);
+
+    if (!*strp)
+        return -1;
+
+    return vsnprintf(*strp, size + 1, fmt, ap);
+}
+
+#endif
+
+
 struct TestOrdering {
     bool operator()(
         const Test *const &a,
