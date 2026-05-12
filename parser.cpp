@@ -47,6 +47,11 @@ static int64_t gMaxHeight;
 static uint64_t gChainSize;
 static uint256_t gNullHash;
 
+#if defined(_WIN64)
+    #include <windows.h>
+    #include <psapi.h>
+#endif
+
 static double getMem() {
 
     #if defined(linux)
@@ -65,7 +70,11 @@ static double getMem() {
         fclose(f);
         return (1e-9f*mem)*getpagesize();
     #elif defined(_WIN64)
-        return 0;   // TODO
+        PROCESS_MEMORY_COUNTERS pmc;
+        if(GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+            return 1e-9 * (double)pmc.WorkingSetSize;
+        }
+        return 0;
     #else
         return 0;   // TODO
     #endif
@@ -603,7 +612,7 @@ static void findBlockParent(
         b->chunk->getOffset(),
         SEEK_SET
     );
-    if(where!=(signed)b->chunk->getOffset()) {
+    if(where!=(int64_t)b->chunk->getOffset()) {
         sysErrFatal(
             "failed to seek into block chain file %s",
             b->chunk->getBlockFile()->name.c_str()
@@ -788,7 +797,7 @@ static void buildBlockHeaders() {
                 break;
             }
 
-            auto where = lseek(blockFile.fd, (blockSize + 8) - sz, SEEK_CUR);
+            auto where = lseek64(blockFile.fd, (int64_t)(blockSize + 8) - (int64_t)sz, SEEK_CUR);
             auto blockOffset = where - blockSize;
             if(where<0) {
                 break;
@@ -923,18 +932,72 @@ static std::string getNormalizedDirName(
 }
 
 static std::string getBlockchainDir() {
+    // BLOCKCHAIN_DIR, if set, points directly at the coin data directory
+    // (e.g. C:\Crypto\.bitcoin or C:\Crypto\.bitcoin\TEST). HOME keeps its
+    // legacy behavior of having kCoinDirName appended.
     auto dir = getenv("BLOCKCHAIN_DIR");
-    if(0==dir) {
-        dir = getenv("HOME");
-        if(0==dir) {
-            errFatal("please  specify either env. variable HOME or BLOCKCHAIN_DIR");
-        }
+    if(0!=dir) {
+        return getNormalizedDirName(std::string(dir));
+    }
+
+    auto home = getenv("HOME");
+    if(0==home) {
+        home = getenv("USERPROFILE");
+    }
+    if(0==home) {
+        errFatal("please specify either env. variable HOME, USERPROFILE, or BLOCKCHAIN_DIR");
     }
     return getNormalizedDirName(
-        dir              +
+        home             +
         std::string("/") +
         kCoinDirName
     );
+}
+
+static bool tryAddBlockFile(
+    const std::string &fileName
+) {
+    auto fd = open(fileName.c_str(), O_RDONLY
+        #if defined(_WIN64)
+            | O_BINARY
+        #endif
+    );
+    if(fd<0) {
+        return false;
+    }
+
+    #if defined(_WIN64)
+        struct _stati64 statBuf;
+        auto r = _fstati64(fd, &statBuf);
+    #else
+        struct stat statBuf;
+        auto r = fstat(fd, &statBuf);
+    #endif
+    if(r<0) {
+        sysErrFatal(
+            "failed to fstat block chain file %s",
+            fileName.c_str()
+        );
+    }
+
+    int64_t fileSize = statBuf.st_size;
+    #if !defined(_WIN64)
+        auto r1 = posix_fadvise(fd, 0, fileSize, POSIX_FADV_NOREUSE);
+        if(r1<0) {
+            warning(
+                "failed to posix_fadvise on block chain file %s",
+                fileName.c_str()
+            );
+        }
+    #endif
+
+    BlockFile blockFile;
+    blockFile.fd = fd;
+    blockFile.size = fileSize;
+    blockFile.name = fileName;
+    blockFiles.push_back(blockFile);
+    gChainSize += fileSize;
+    return true;
 }
 
 static void findBlockFiles() {
@@ -942,9 +1005,21 @@ static void findBlockFiles() {
     gChainSize = 0;
 
     auto blockChainDir = getBlockchainDir();
-    auto blockDir = blockChainDir + std::string("/blocks");
     info("loading block chain from directory: %s", blockChainDir.c_str());
 
+    // Highest precedence: a single concatenated bootstrap.dat file
+    // (same format as a blk*.dat, just unsplit).
+    auto bootstrap = blockChainDir + std::string("/bootstrap.dat");
+    if(tryAddBlockFile(bootstrap)) {
+        info(
+            "found bootstrap.dat (%.3f Gigs) -- using as single block file",
+            1e-9*blockFiles.back().size
+        );
+        info("block chain size = %.3f Gigs", 1e-9*gChainSize);
+        return;
+    }
+
+    auto blockDir = blockChainDir + std::string("/blocks");
     struct stat statBuf;
     auto r = stat(blockDir.c_str(), &statBuf);
     auto oldStyle = (r<0 || !S_ISDIR(statBuf.st_mode));
@@ -957,7 +1032,11 @@ static void findBlockFiles() {
         sprintf(buf, fmt, blkDatId++);
 
         auto fileName = blockChainDir + std::string(buf) ;
-        auto fd = open(fileName.c_str(), O_RDONLY);
+        auto fd = open(fileName.c_str(), O_RDONLY
+            #if defined(_WIN64)
+                | O_BINARY
+            #endif
+        );
         if(fd<0) {
             if(1<blkDatId) {
                 break;
@@ -968,8 +1047,13 @@ static void findBlockFiles() {
             );
         }
 
-        struct stat statBuf;
-        auto r0 = fstat(fd, &statBuf);
+        #if defined(_WIN64)
+            struct _stati64 statBuf;
+            auto r0 = _fstati64(fd, &statBuf);
+        #else
+            struct stat statBuf;
+            auto r0 = fstat(fd, &statBuf);
+        #endif
         if(r0<0) {
             sysErrFatal(
                 "failed to fstat block chain file %s",

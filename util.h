@@ -116,7 +116,7 @@
         const uint8_t *getData() const {
             if(likely(0==data)) {
                 auto where = lseek64(blockFile->fd, offset, SEEK_SET);
-                if(where!=(signed)offset) {
+                if(where!=(int64_t)offset) {
                     sysErrFatal(
                         "failed to seek into block chain file %s",
                         blockFile->name.c_str()
